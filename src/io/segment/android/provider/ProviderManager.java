@@ -98,7 +98,9 @@ public class ProviderManager implements IProvider {
 			for (Provider provider : providers) {
 				// iterate through all of the providers we enabe
 				String providerKey = provider.getKey();
+				Log.d(TAG, "ProviderKey :" + providerKey);
 				if (allSettings.has(providerKey)) {
+					Log.d(TAG, "settings has info for provider :" + providerKey);
 					// the settings has info for this provider
 					// initialize the provider with those settings
 					EasyJSONObject settings = new EasyJSONObject(allSettings.getObject(providerKey));

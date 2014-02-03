@@ -9,8 +9,8 @@ public class Configuration {
 	private static final String STRING_RESOURCE_KEY = "string";
 	private static final String INTEGER_RESOURCE_KEY = "integer";
 	
-	private static final String SECRET_KEY = "analytics_secret";
-	private static final String WRITE_KEY = "analytics_write_key";
+	//private static final String SECRET_KEY = "analytics_secret";
+	private static final String SETTINGS_STRING = "analytics_settings_string";
 	
 	private static final String HOST_KEY = "analytics_host";
 	private static final String DEBUG_KEY = "analytics_debug";
@@ -20,13 +20,9 @@ public class Configuration {
 	private static final String SETTINGS_CACHE_EXPIRY_KEY = "analytics_settings_cache_expiry";
 
 	
-	public static String getWriteKey(Context context) {
-		String writeKey = getString(context, WRITE_KEY);
-		if (writeKey != null) { 
-			return writeKey;
-		} else {
-			return getString(context, SECRET_KEY);
-		} 
+	public static String getSettingsString(Context context) {
+		String settingsString = getString(context, SETTINGS_STRING);
+		return settingsString;
 	}
 	
 	public static Options getOptions(Context context) {

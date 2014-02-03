@@ -57,7 +57,8 @@ public class BasicRequester implements IRequester {
 
 		Options options = Analytics.getOptions();
 		
-		String url = options.getHost() + Defaults.getSettingsEndpoint(Analytics.getWriteKey());
+		//String url = options.getHost() + Defaults.getSettingsEndpoint(Analytics.getWriteKey());
+		String url = options.getHost();
 		
 		HttpClient httpclient = new DefaultHttpClient(); 
 		HttpGet get = new HttpGet(url);

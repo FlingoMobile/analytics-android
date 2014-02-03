@@ -16,18 +16,46 @@ public class SettingsCache extends SimpleStringCache {
 	private static final String CACHE_KEY = "settings";
 	
 	private static final String SETTINGS_KEY = "settings";
-	private static final String LAST_UPDATED_KEY = "lastUpdated";
+	//private static final String LAST_UPDATED_KEY = "lastUpdated";
 	
 	private int reloads;
-	private ISettingsLayer layer;
-	private int cacheForMs;
+	//private ISettingsLayer layer;
+	//private int cacheForMs;
 	
+	/*
 	public SettingsCache(Context context, ISettingsLayer layer, int cachedMs) {
 		super(context, CACHE_KEY);
 		this.layer = layer;
 		this.cacheForMs = cachedMs;
 	}
+	*/
+	
+	// SambaAnalytics - settings constructor without background fetch layer 
+	public SettingsCache(Context context, String settingsString) {
+		super(context, CACHE_KEY);
+		Logger.d("SettingsCache init: " + settingsString);
 
+		// wrap the settings in JSON object, and then a EasyJSONObject container
+		JSONObject settingsJson = null;
+		try {
+			settingsJson = new JSONObject(settingsString);
+		} catch (JSONException e) {
+			e.printStackTrace();
+			Logger.e("SettingsCache exception parsing settings: " + settingsString);
+
+		}
+		
+		EasyJSONObject container = new EasyJSONObject();
+		EasyJSONObject settingsJSON = new EasyJSONObject(settingsJson);
+		container.put(SETTINGS_KEY, settingsJSON);
+
+		Logger.d("Successfully fetched new Segment.io settings.");
+		
+		set(container.toString());
+	}
+
+	// SambaAnalytics - Disable loading of settings from segment.io
+	/*
 	@Override
 	public String load() {
 		Logger.d("Requesting Segment.io settings ..");
@@ -56,7 +84,7 @@ public class SettingsCache extends SimpleStringCache {
 		
 		return null;
 	}
-	
+	*/	
 	
 	private EasyJSONObject parseContainer(String json) {
 		if (json != null) {
@@ -80,6 +108,9 @@ public class SettingsCache extends SimpleStringCache {
 		String json = super.get();
 		EasyJSONObject container = parseContainer(json);
 		if (container != null) {
+			
+			//SambaAnalytics - disable checking timestamp of segment.io settings
+			/*
 			// if we have it cached, let's check its time
 			// to make sure its recent
 			Calendar rightNow = Calendar.getInstance();
@@ -97,6 +128,9 @@ public class SettingsCache extends SimpleStringCache {
 				Logger.w("Container exists, but without last updated key. JSON: " + 
 						container.toString());
 			}
+			*/
+			Logger.d("Container exists, JSON: " + container.toString());
+			return container.toString();
 		}
 		
 		return null;
