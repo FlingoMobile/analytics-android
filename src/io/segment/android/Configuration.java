@@ -18,7 +18,7 @@ public class Configuration {
 	private static final String FLUSH_AFTER_KEY = "analytics_flush_after";
 	private static final String MAX_QUEUE_SIZE_KEY = "analytics_max_queue_size";
 	private static final String SETTINGS_CACHE_EXPIRY_KEY = "analytics_settings_cache_expiry";
-
+	private static final String SETTINGS_SEND_LOCATION_KEY = "analytics_send_location";
 	
 	public static String getSettingsString(Context context) {
 		String settingsString = getString(context, SETTINGS_STRING);
@@ -45,6 +45,9 @@ public class Configuration {
 		
 		Integer settingsCacheExpiry = getInteger(context, SETTINGS_CACHE_EXPIRY_KEY);
 		if (settingsCacheExpiry != null) options.setSettingsCacheExpiry(settingsCacheExpiry);
+		
+		Boolean sendLocation = getBoolean(context, SETTINGS_SEND_LOCATION_KEY);
+		if (sendLocation != null) options.setSendLocation(sendLocation);
 		
 		return options;
 	}

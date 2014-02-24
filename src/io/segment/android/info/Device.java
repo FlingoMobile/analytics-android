@@ -7,7 +7,7 @@ import org.json.JSONObject;
 import android.content.Context;
 
 public class Device implements Info<JSONObject> {
-
+	
 	@Override
 	public String getKey() {
 		return "device";
@@ -21,6 +21,7 @@ public class Device implements Info<JSONObject> {
 		device.put("sdk", android.os.Build.VERSION.SDK_INT);
 		device.put("release",  android.os.Build.VERSION.RELEASE);
 		device.put("brand", android.os.Build.BRAND);
+		device.put("model", android.os.Build.MODEL);
 		device.put("manufacturer",  android.os.Build.MANUFACTURER);
 		
 		return device;	

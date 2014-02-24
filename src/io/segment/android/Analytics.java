@@ -1,6 +1,7 @@
 package io.segment.android;
 
 import io.segment.android.cache.ISettingsLayer;
+import io.segment.android.cache.ISettingsLayer.SettingsCallback;
 import io.segment.android.cache.SessionIdCache;
 import io.segment.android.cache.SettingsCache;
 import io.segment.android.cache.SettingsThread;
@@ -14,18 +15,20 @@ import io.segment.android.flush.FlushThread.BatchFactory;
 import io.segment.android.flush.IFlushLayer;
 import io.segment.android.flush.IFlushLayer.FlushCallback;
 import io.segment.android.info.InfoManager;
+import io.segment.android.info.SessionId;
+import io.segment.android.integration.Integration;
+import io.segment.android.integration.IntegrationManager;
 import io.segment.android.models.Alias;
 import io.segment.android.models.BasePayload;
 import io.segment.android.models.Batch;
 import io.segment.android.models.Context;
 import io.segment.android.models.EasyJSONObject;
-import io.segment.android.models.EventProperties;
+import io.segment.android.models.Group;
 import io.segment.android.models.Identify;
+import io.segment.android.models.Props;
 import io.segment.android.models.Screen;
 import io.segment.android.models.Track;
 import io.segment.android.models.Traits;
-import io.segment.android.provider.Provider;
-import io.segment.android.provider.ProviderManager;
 import io.segment.android.request.BasicRequester;
 import io.segment.android.request.IRequester;
 import io.segment.android.stats.AnalyticsStatistics;
@@ -41,7 +44,7 @@ import android.text.TextUtils;
 
 public class Analytics {
 	
-	public static final String VERSION = "0.4.4";
+	public static final String VERSION = "0.6.2";
 	
 	private static AnalyticsStatistics statistics;
 	
@@ -50,7 +53,7 @@ public class Analytics {
 	
 	private static InfoManager infoManager;
 	
-	private static ProviderManager providerManager;
+	private static IntegrationManager integrationManager;
 	private static HandlerTimer flushTimer;
 	//private static HandlerTimer refreshSettingsTimer;
 	private static PayloadDatabase database;
@@ -65,6 +68,7 @@ public class Analytics {
 
 	private static SimpleStringCache sessionIdCache;
 	private static SimpleStringCache userIdCache;
+	private static SimpleStringCache groupIdCache;
 	private static SettingsCache settingsCache;
 
 
@@ -86,7 +90,7 @@ public class Analytics {
 	 */
 	public static void onCreate (android.content.Context context) {
 		Analytics.initialize(context);
-		providerManager.onCreate(context);
+		integrationManager.onCreate(context);
 	}
 	
 	/**
@@ -112,7 +116,7 @@ public class Analytics {
 	 */
 	public static void onCreate (android.content.Context context, String writeKey) {
 		Analytics.initialize(context, writeKey);
-		providerManager.onCreate(context);
+		integrationManager.onCreate(context);
 	}
 	
 	/**
@@ -141,7 +145,7 @@ public class Analytics {
 	 */
 	public static void onCreate (android.content.Context context, String writeKey, Options options) {
 		Analytics.initialize(context, writeKey, options);
-		providerManager.onCreate(context);
+		integrationManager.onCreate(context);
 	}
 	
 	/**
@@ -162,7 +166,7 @@ public class Analytics {
 	 */
 	public static void activityStart (Activity activity) {
 		Analytics.initialize(activity);
-		providerManager.onActivityStart(activity);
+		integrationManager.onActivityStart(activity);
 	}
 	
 	/**
@@ -188,7 +192,7 @@ public class Analytics {
 	 */
 	public static void activityStart (Activity activity, String writeKey) {
 		Analytics.initialize(activity, writeKey);
-		providerManager.onActivityStart(activity);
+		integrationManager.onActivityStart(activity);
 	}
 	
 	/**
@@ -218,7 +222,18 @@ public class Analytics {
 	public static void activityStart (Activity activity, String settingsString, Options options) {
 		Analytics.initialize(activity, settingsString, options);
 		if (optedOut) return;
-		providerManager.onActivityStart(activity);
+		integrationManager.onActivityStart(activity);
+	}
+
+	/**
+	 * Called when the activity has been resumed
+	 * @param activity
+	 *            Your Android Activity
+	 */
+	public static void activityResume (Activity activity) {
+		Analytics.initialize(activity);
+		if (optedOut) return;
+		integrationManager.onActivityResume(activity);
 	}
 	
 	/**
@@ -229,7 +244,18 @@ public class Analytics {
 	public static void activityStop (Activity activity) {
 		Analytics.initialize(activity);
 		if (optedOut) return;
-		providerManager.onActivityStop(activity);
+		integrationManager.onActivityStop(activity);
+	}
+
+	/**
+	 * Called when the activity has been paused
+	 * @param activity
+	 *            Your Android Activity
+	 */
+	public static void activityPause (Activity activity) {
+		Analytics.initialize(activity);
+		if (optedOut) return;
+		integrationManager.onActivityPause(activity);
 	}
 	
 
@@ -356,10 +382,14 @@ public class Analytics {
 		database = PayloadDatabase.getInstance(context);
 
 		// knows how to create global context about this android device
-		infoManager = new InfoManager();
+		infoManager = new InfoManager(options);
 		
 		sessionIdCache = new SessionIdCache(context);
+		groupIdCache = new SimpleStringCache(context, Constants.SharedPreferences.GROUP_ID_KEY);
 		userIdCache = new SimpleStringCache(context, Constants.SharedPreferences.USER_ID_KEY);
+		
+		// set the sessionId initially
+		sessionIdCache.set(new SessionId().get(context));
 		
 		// add a global context
 		globalContext = new Context(infoManager.build(context));
@@ -393,14 +423,13 @@ public class Analytics {
 		
 		settingsCache = new SettingsCache(context, settingsString);
 
-		providerManager = new ProviderManager(settingsCache);
-	
+		integrationManager = new IntegrationManager(settingsCache);	
 		
 		// important: disable Segment.io server-side processing of
 		// the bundled providers that we'll evaluate on the mobile
 		// device
 		EasyJSONObject providerContext = new EasyJSONObject();
-		for (Provider provider : providerManager.getProviders()) {
+		for (Integration provider : integrationManager.getProviders()) {
 			providerContext.put(provider.getKey(), false);
 		}
 		globalContext.put("providers", providerContext);
@@ -412,6 +441,9 @@ public class Analytics {
 		//Analytics.refreshSettingsTimer.start();
 		//Analytics.flushLayer.start();
 		//Analytics.settingsLayer.start();
+		
+		// reload the settings on start, to eliminate the need to wait for the refresh
+		
 		
 		// tell the server to look for settings right now
 		//Analytics.refreshSettingsTimer.scheduleNow();
@@ -456,7 +488,12 @@ public class Analytics {
 	private static Runnable refreshSettingsClock = new Runnable() {
 		@Override
 		public void run() {
-			providerManager.refresh();
+			settingsCache.load(new SettingsCallback() {
+				@Override
+				public void onSettingsLoaded(boolean success, EasyJSONObject object) {
+					integrationManager.refresh();	
+				}
+			});
 		}
 	};
 	*/
@@ -468,8 +505,6 @@ public class Analytics {
 	//
 	// Identify
 	//
-
-
 
 	/**
 	 * Identifying a user ties all of their actions to an id, and associates
@@ -676,6 +711,7 @@ public class Analytics {
 		checkInitialized();
 		if (optedOut) return;
 
+		String sessionId = getSessionId();
 		userId = getOrSetUserId(userId);
 		
 		if (userId == null || userId.length() == 0) {
@@ -687,13 +723,218 @@ public class Analytics {
 		if (traits == null)
 			traits = new Traits();
 
-		Identify identify = new Identify(userId, traits, timestamp, context);
+		Identify identify = new Identify(sessionId, userId, traits, timestamp, context);
 
 		enqueue(identify);
 		
-		providerManager.identify(identify);
+		integrationManager.identify(identify);
 		
 		statistics.updateIdentifies(1);
+	}
+	
+	//
+	// Group
+	//
+	
+	/**
+	 * Identifying a group ties all of the group's actions to an id, and associates
+	 * group traits to that id.
+	 * 
+	 * @param groupId
+	 *            the group's id. It's the same id as
+	 *            which you would recognize a user's company in your database.
+	 * 
+	 */
+	public static void group(String groupId) {
+
+		group(groupId, null, null, null);
+	}
+	
+	/**
+	 * Identifying a group ties all of the group's actions to an id, and associates
+	 * group traits to that id.
+	 * 
+	 * @param traits
+	 *            a dictionary with keys like plan or name. You only
+	 *            need to record a trait once, no need to send it again.
+	 * 
+	 */
+	public static void group(Traits traits) {
+
+		group(null, traits, null, null);
+	}
+	
+	/**
+	 * Identifying a group ties all of the group's actions to an id, and associates
+	 * group traits to that id.
+	 * 
+	 * @param groupId
+	 *            the group's id. It's the same id as
+	 *            which you would recognize a user's company in your database.
+	 * 
+	 * @param traits
+	 *            a dictionary with keys like plan or name. You only
+	 *            need to record a trait once, no need to send it again.
+	 * 
+	 */
+	public static void group(String groupId, Traits traits) {
+
+		group(groupId, traits, null, null);
+	}
+
+
+	/**
+	 * Identifying a group ties all of the group's actions to an id, and associates
+	 * group traits to that id.
+	 * 
+	 * @param traits
+	 *            a dictionary with keys like plan or name. You only
+	 *            need to record a trait once, no need to send it again.
+	 * 
+	 * @param context
+	 *            a custom object that describes the device context or grouping options.
+	 */
+	public static void group(Traits traits, Context context) {
+
+		group(null, traits, null, context);
+	}
+	
+	/**
+	 * Identifying a group ties all of the group's actions to an id, and associates
+	 * group traits to that id.
+	 * 
+	 * @param groupId
+	 *            the group's id. It's the same id as
+	 *            which you would recognize a user's company in your database.
+	 * 
+	 * @param traits
+	 *            a dictionary with keys like plan or name. You only
+	 *            need to record a trait once, no need to send it again.
+	 * 
+	 * @param context
+	 *            a custom object that describes the device context or grouping options.
+	 */
+	public static void group(String groupId, Traits traits, Context context) {
+
+		group(groupId, traits, null, context);
+	}
+
+
+	/**
+	 * Identifying a group ties all of the group's actions to an id, and associates
+	 * group traits to that id.
+	 * 
+	 * @param traits
+	 *            a dictionary with keys like plan or name. You only
+	 *            need to record a trait once, no need to send it again.
+	 * 
+	 * @param timestamp
+	 *            a {@link Calendar} representing when the group operation took place.
+	 *            If the grouping just happened, leave it blank and we'll use
+	 *            the server's time. If you are importing data from the past,
+	 *            make sure you provide this argument.
+	 * 
+	 */
+	public static void group(Traits traits, Calendar timestamp) {
+
+		group(null, traits, timestamp, null);
+	}
+
+	
+	/**
+	 * Identifying a group ties all of the group's actions to an id, and associates
+	 * group traits to that id.
+	 * 
+	 * @param groupId
+	 *            the group's id. It's the same id as
+	 *            which you would recognize a user's company in your database.
+	 * 
+	 * @param traits
+	 *            a dictionary with keys like plan or name. You only
+	 *            need to record a trait once, no need to send it again.
+	 * 
+	 * @param timestamp
+	 *            a {@link Calendar} representing when the group operation took place.
+	 *            If the grouping just happened, leave it blank and we'll use
+	 *            the server's time. If you are importing data from the past,
+	 *            make sure you provide this argument.
+	 * 
+	 */
+	public static void group(String groupId, Traits traits, Calendar timestamp) {
+
+		group(groupId, traits, timestamp, null);
+	}
+
+	/**
+	 * Identifying a group ties all of the group's actions to an id, and associates
+	 * group traits to that id.
+	 * 
+	 * @param traits
+	 *            a dictionary with keys like plan or name. You only
+	 *            need to record a trait once, no need to send it again.
+	 * 
+	 * @param timestamp
+	 *            a {@link Calendar} representing when the group operation took place.
+	 *            If the grouping just happened, leave it blank and we'll use
+	 *            the server's time. If you are importing data from the past,
+	 *            make sure you provide this argument.
+	 * 
+	 * @param context
+	 *            a custom object that describes the device context or grouping options.
+	 */
+	public static void group(Traits traits, Calendar timestamp,
+			Context context) {
+		
+		group(null, traits, timestamp, context);
+	}
+	
+	/**
+	 * Identifying a group ties all of the group's actions to an id, and associates
+	 * group traits to that id.
+	 * 
+	 * @param groupId
+	 *            the group's id. It's the same id as
+	 *            which you would recognize a user's company in your database.
+	 * 
+	 * @param traits
+	 *            a dictionary with keys like plan or name. You only
+	 *            need to record a trait once, no need to send it again.
+	 * 
+	 * @param timestamp
+	 *            a {@link Calendar} representing when the group operation took place.
+	 *            If the grouping just happened, leave it blank and we'll use
+	 *            the server's time. If you are importing data from the past,
+	 *            make sure you provide this argument.
+	 * 
+	 * @param context
+	 *            a custom object that describes the device context or grouping options.
+	 */
+	public static void group(String groupId, Traits traits, Calendar timestamp,
+			Context context) {
+		
+		checkInitialized();
+		if (optedOut) return;
+
+		String sessionId = getSessionId();
+		String userId = getUserId();
+		groupId = getOrSetGroupId(groupId);
+		
+		if (groupId == null || groupId.length() == 0) {
+			throw new IllegalArgumentException("analytics-android #group must be called with a valid group id.");
+		}
+		
+		if (context == null)
+			context = new Context();
+		if (traits == null)
+			traits = new Traits();
+
+		Group group = new Group(sessionId, userId, groupId, traits, timestamp, context);
+
+		enqueue(group);
+		
+		integrationManager.group(group);
+		
+		statistics.updateGroups(1);
 	}
 	
 	//
@@ -735,7 +976,7 @@ public class Analytics {
 	 *            recommended—you’ll find these properties extremely useful
 	 *            later.
 	 */
-	public static void track(String event, EventProperties properties) {
+	public static void track(String event, Props properties) {
 
 		track(event, properties, null, null);
 	}
@@ -765,7 +1006,7 @@ public class Analytics {
 	 *            past, make sure you provide this argument.
 	 * 
 	 */
-	public static void track(String event, EventProperties properties,
+	public static void track(String event, Props properties,
 			Calendar timestamp) {
 
 		track(event, properties, timestamp, null);
@@ -794,7 +1035,7 @@ public class Analytics {
 	 *            event's properties (such as the user's IP)
 	 * 
 	 */
-	public static void track(String event, EventProperties properties,
+	public static void track(String event, Props properties,
 			 Context context) {
 
 		track(event, properties, null, context);
@@ -828,13 +1069,13 @@ public class Analytics {
 	 *            event's properties (such as the user's IP)
 	 * 
 	 */
-	public static void track(String event, EventProperties properties,
+	public static void track(String event, Props properties,
 			Calendar timestamp, Context context) {
 		
 		checkInitialized();
 		if (optedOut) return;
 		
-		// get the user ID from the cache
+		String sessionId = getSessionId();
 		String userId = getOrSetUserId(null);
 		
 		if (userId == null || userId.length() == 0) {
@@ -848,14 +1089,14 @@ public class Analytics {
 		if (context == null)
 			context = new Context();
 		if (properties == null)
-			properties = new EventProperties();
+			properties = new Props();
 
 		
-		Track track = new Track(userId, event, properties, timestamp, context);
+		Track track = new Track(sessionId, userId, event, properties, timestamp, context);
 
 		enqueue(track);
 		
-		providerManager.track(track);
+		integrationManager.track(track);
 		
 		statistics.updateTracks(1);
 	}
@@ -910,7 +1151,7 @@ public class Analytics {
 	 *            later.
 	 * 
 	 */
-	public static void screen(String screen, EventProperties properties) {
+	public static void screen(String screen, Props properties) {
 		
 		screen(screen, properties, null, null);
 	}
@@ -945,7 +1186,7 @@ public class Analytics {
 	 *            past, make sure you provide this argument.
 	 * 
 	 */
-	public static void screen(String screen, EventProperties properties,
+	public static void screen(String screen, Props properties,
 							  Calendar timestamp) {
 		
 		screen(screen, properties, timestamp, null);
@@ -984,13 +1225,12 @@ public class Analytics {
 	 *            event's properties (such as the user's IP)
 	 * 
 	 */
-	public static void screen(String screen, EventProperties properties,
-							  Calendar timestamp, Context context) {
-		
-		
+	public static void screen(String screen, Props properties,
+							  Calendar timestamp, Context context) {		
 		checkInitialized();
 		if (optedOut) return;
-
+		
+		String sessionId = getSessionId();
 		String userId = getOrSetUserId(null);
 		
 		if (userId == null || userId.length() == 0) {
@@ -1004,13 +1244,15 @@ public class Analytics {
 		if (context == null)
 			context = new Context();
 		if (properties == null)
-			properties = new EventProperties();
+			properties = new Props();
 
 		
-		Screen screenAction = new Screen(userId, screen, properties, timestamp, context);
+		Screen screenAction = new Screen(sessionId, userId, screen, properties, timestamp, context);
+		
+		enqueue(screenAction);
 		
 		// just call internally into the provider manager
-		providerManager.screen(screenAction);
+		integrationManager.screen(screenAction);
 		
 		statistics.updateScreens(1);
 	}
@@ -1117,7 +1359,7 @@ public class Analytics {
 		
 		enqueue(alias);
 		
-		providerManager.alias(alias);
+		integrationManager.alias(alias);
 		
 		statistics.updateAlias(1);
 	}
@@ -1149,6 +1391,26 @@ public class Analytics {
 		}
 		
 		return userId;
+	}
+
+	/**
+	 * Gets or sets the current groupId. If the groupId
+	 * is not null, then it will be set in the groupId cache and will
+	 * be returned.
+	 * @param groupId
+	 * @return
+	 */
+	private static String getOrSetGroupId(String groupId) {
+		
+		if (TextUtils.isEmpty(groupId)) {
+			// no group id provided, lets try to see if we have it saved
+			groupId = groupIdCache.get();
+		} else {
+			// we were passed a user Id so let's save it
+			groupIdCache.set(groupId);
+		}
+		
+		return groupId;
 	}
 	
 	/**
@@ -1216,7 +1478,7 @@ public class Analytics {
 	public static void optOut(boolean optOut) {
 		boolean toggled = Analytics.optedOut != optOut;
 		Analytics.optedOut = optOut;
-		if (toggled) providerManager.toggleOptOut(optOut);
+		if (toggled) integrationManager.toggleOptOut(optOut);
 	}
 	
 	//
@@ -1233,7 +1495,7 @@ public class Analytics {
 		statistics.updateFlushAttempts(1);
 		
 		// flush all the providers as well
-		providerManager.flush();
+		integrationManager.flush();
 		
 		/*
 		final long start = System.currentTimeMillis(); 
@@ -1256,7 +1518,7 @@ public class Analytics {
 		});
 
 		// flush all the providers as well
-		providerManager.flush();
+		integrationManager.flush();
 		
 		if (!async) {
 			try {
@@ -1274,9 +1536,10 @@ public class Analytics {
 	public static void reset() {
 		if (initialized) {
 			userIdCache.reset();
+			groupIdCache.reset();
 			
 			// reset all the providers
-			providerManager.reset();
+			integrationManager.reset();
 		}
 	}
 	
@@ -1286,7 +1549,7 @@ public class Analytics {
 	 */
 	public static void refreshSettings() {
 		if (initialized) {
-			providerManager.refresh();
+			integrationManager.refresh();
 		}
 	}
 	
@@ -1371,9 +1634,9 @@ public class Analytics {
 		Analytics.writeKey = writeKey;
 	}
 	*/
-	
-	public static ProviderManager getProviderManager() {
-		return providerManager;
+
+	public static IntegrationManager getProviderManager() {
+		return integrationManager;
 	}
 	
 	/**

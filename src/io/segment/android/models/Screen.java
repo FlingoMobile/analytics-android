@@ -8,30 +8,31 @@ public class Screen extends Track {
 	
 	public final static String ACTION = "screen";
 	
-	private static final String SCREEN_KEY = "screen";
+	private static final String NAME_KEY = "name";
 	
 	public Screen (JSONObject obj) {
 		super(obj);
 	}
 	
-	public Screen(String userId, 
-				 String screen, 
-				 EventProperties properties, 
+	public Screen(String sessionId,
+				 String userId, 
+				 String name, 
+				 Props properties, 
 				 Calendar timestamp,
 				 Context context) {
 
-		super(userId, "Viewed " + screen, properties, timestamp, context);
+		super(sessionId, userId, "Viewed " + name, properties, timestamp, context);
 
 		put("action", ACTION);
 		
-		setScreen(screen);
+		setName(name);
 	}
 
-	public String getScreen() {
-		return this.optString(SCREEN_KEY, null);
+	public String getName() {
+		return this.optString(NAME_KEY, null);
 	}
 
-	public void setScreen(String screen) {
-		this.put(SCREEN_KEY, screen);
+	public void setName(String name) {
+		this.put(NAME_KEY, name);
 	}
 }

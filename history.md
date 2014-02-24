@@ -1,3 +1,28 @@
+0.6.2 / February 21, 2014
+=================
+* set sessionId initially
+* add `analytics_send_location` option
+
+0.6.1 / February 20, 2014
+=================
+* adding `device.model`
+* force settings `fetch` on application start
+
+0.6.0 / February 19, 2014
+=================
+* renaming `EventProperties` to `Props`
+* deprecating `EventProperties`
+* adding `sessionId` to each message
+* `screen` is now sent to the server-side API
+* added `group` method call to the API
+
+0.5.0 / February 17, 2014
+=================
+* renaming `Provider` to `Integration`
+* pulling in https://github.com/segmentio/analytics-android/pull/16
+* updating `LocalyticsIntegration`
+* adding `activityPause` and `activityResume` to the API
+
 0.4.5 / January 8, 2014
 =================
 * downgrading to Mixpanel 3.3.4 SDK due to v4.0.0 being [marked beta post release](https://github.com/mixpanel/mixpanel-android/commit/98e30e414634df80a90650d183a5f7a131a17c74)

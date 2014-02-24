@@ -15,13 +15,14 @@ public class Track extends BasePayload {
 		super(obj);
 	}
 	
-	public Track(String userId, 
+	public Track(String sessionId,
+				 String userId, 
 				 String event, 
-				 EventProperties properties, 
+				 Props properties, 
 				 Calendar timestamp,
 				 Context context) {
 
-		super(userId, timestamp, context);
+		super(sessionId, userId, timestamp, context);
 
 		put("action", ACTION);
 		
@@ -37,13 +38,13 @@ public class Track extends BasePayload {
 		this.put(EVENT_KEY, event);
 	}
 
-	public EventProperties getProperties() {
+	public Props getProperties() {
 		JSONObject object = getObject(PROPERTIES_KEY);
 		if (object == null) return null;
-		else return new EventProperties(object);
+		else return new Props(object);
 	}
 
-	public void setProperties(EventProperties properties) {
+	public void setProperties(Props properties) {
 		this.put(PROPERTIES_KEY, properties);
 	}
 }
