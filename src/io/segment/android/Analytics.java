@@ -44,21 +44,21 @@ import android.text.TextUtils;
 
 public class Analytics {
 	
-	public static final String VERSION = "0.6.2";
+	public static final String VERSION = "0.6.6";
 	
 	private static AnalyticsStatistics statistics;
 	
-	//private static String writeKey;
+	private static String writeKey;
 	private static Options options;
 	
 	private static InfoManager infoManager;
 	
 	private static IntegrationManager integrationManager;
 	private static HandlerTimer flushTimer;
-	//private static HandlerTimer refreshSettingsTimer;
+	private static HandlerTimer refreshSettingsTimer;
 	private static PayloadDatabase database;
 	private static IPayloadDatabaseLayer databaseLayer;
-	//private static IFlushLayer flushLayer;
+	private static IFlushLayer flushLayer;
 	private static ISettingsLayer settingsLayer;
 	
 	private static Context globalContext;
@@ -219,8 +219,8 @@ public class Analytics {
 	 * 
 	 * 
 	 */
-	public static void activityStart (Activity activity, String settingsString, Options options) {
-		Analytics.initialize(activity, settingsString, options);
+	public static void activityStart (Activity activity, String writeKey, Options options) {
+		Analytics.initialize(activity, writeKey, options);
 		if (optedOut) return;
 		integrationManager.onActivityStart(activity);
 	}
@@ -285,10 +285,10 @@ public class Analytics {
 		if (initialized) return;
 
 		// read both writeKey and options from analytics.xml
-		String settingsString = Configuration.getSettingsString(context);
+		String writeKey = Configuration.getWriteKey(context);
 		Options options = Configuration.getOptions(context);
 		
-		initialize(context, settingsString, options);
+		initialize(context, writeKey, options);
 	}
 
 	
@@ -311,18 +311,19 @@ public class Analytics {
 	 * @param context
 	 *            Your Android android.content.Content (like your activity).
 	 * 
-	 * @param settingsString
-	 *            Your segment.io compliant settings string 
+	 * @param writeKey
+	 *            Your segment.io writeKey. You can get one of these by
+	 *            registering for a project at https://segment.io
 	 * 
 	 */
-	public static void initialize(android.content.Context context, String settingsString) {
+	public static void initialize(android.content.Context context, String writeKey) {
 
 		if (initialized) return;
 
 		// read options from analytics.xml
 		Options options = Configuration.getOptions(context);
 		
-		initialize(context, settingsString, options);
+		initialize(context, writeKey, options);
 	}
 
 	/**
@@ -344,24 +345,24 @@ public class Analytics {
 	 * @param context
 	 *            Your Android android.content.Content (like your activity).
 	 * 
-	 * @param settingsString
-	 *            Your segment.io compliant settings string 
+	 * @param writeKey
+	 *            Your segment.io writeKey. You can get one of these by
+	 *            registering for a project at https://segment.io
 	 * 
 	 * @param options
 	 *            Options to configure the behavior of the Segment.io client
 	 * 
 	 * 
 	 */
-	public static void initialize(android.content.Context context, String settingsString, Options options) {
+	public static void initialize(android.content.Context context, String writeKey, Options options) {
 		
 		String errorPrefix = "analytics-android client must be initialized with a valid ";
 
 		if (context == null)
 			throw new IllegalArgumentException(errorPrefix + "android context."); 
 		
-		// SambaAnalytics - Remove Dependence on writeKey
-		//if (writeKey == null || writeKey.length() == 0)
-		//	throw new IllegalArgumentException(errorPrefix + "writeKey.");
+		if (writeKey == null || writeKey.length() == 0)
+			throw new IllegalArgumentException(errorPrefix + "writeKey.");
 
 		if (options == null)
 			throw new IllegalArgumentException(errorPrefix + "options.");
@@ -370,14 +371,12 @@ public class Analytics {
 		
 		Analytics.statistics = new AnalyticsStatistics();
 		
-		// SambaAnalytics - Remove Dependence on writeKey
-		//Analytics.writeKey = writeKey;
-		
+		Analytics.writeKey = writeKey;
 		Analytics.options = options;
 		
 		// set logging based on the debug mode
 		Logger.setLog(options.isDebug());
-       
+
 		// create the database using the activity context
 		database = PayloadDatabase.getInstance(context);
 
@@ -394,10 +393,8 @@ public class Analytics {
 		// add a global context
 		globalContext = new Context(infoManager.build(context));
 		
-		// SambaAnalytics - Disable segment.io code
-		/*
 		IRequester requester = new BasicRequester();
-
+		
 		// now we need to create our singleton thread-safe database thread
 		Analytics.databaseLayer = new PayloadDatabaseThread(database);
 		Analytics.databaseLayer.start();
@@ -412,18 +409,13 @@ public class Analytics {
 		
 		Analytics.refreshSettingsTimer = new HandlerTimer(
 				options.getSettingsCacheExpiry() + 1000, refreshSettingsClock);
-
+		
 		Analytics.settingsLayer = new SettingsThread(requester);
 		
 		settingsCache = new SettingsCache(context, settingsLayer, options.getSettingsCacheExpiry());
-		*/
 		
-		Analytics.flushTimer = new HandlerTimer(
-				options.getFlushAfter(), flushClock);
-		
-		settingsCache = new SettingsCache(context, settingsString);
-
-		integrationManager = new IntegrationManager(settingsCache);	
+		integrationManager = new IntegrationManager(settingsCache);
+	
 		
 		// important: disable Segment.io server-side processing of
 		// the bundled providers that we'll evaluate on the mobile
@@ -438,24 +430,22 @@ public class Analytics {
 		
 		// start the other threads
 		Analytics.flushTimer.start();
-		//Analytics.refreshSettingsTimer.start();
-		//Analytics.flushLayer.start();
-		//Analytics.settingsLayer.start();
+		Analytics.refreshSettingsTimer.start();
+		Analytics.flushLayer.start();
+		Analytics.settingsLayer.start();
 		
 		// reload the settings on start, to eliminate the need to wait for the refresh
 		
 		
 		// tell the server to look for settings right now
-		//Analytics.refreshSettingsTimer.scheduleNow();
+		Analytics.refreshSettingsTimer.scheduleNow();
 	}
-	
 	
 	/**
 	 * Factory that creates batches from payloads.
 	 * 
 	 * Inserts system information into global batches
 	 */
-	/*
 	private static BatchFactory batchFactory = new BatchFactory() {
 		
 		@Override
@@ -469,7 +459,6 @@ public class Analytics {
 			return batch;
 		}
 	};
-	*/
 	
 	/**
 	 * Flushes on a clock timer
@@ -484,7 +473,6 @@ public class Analytics {
 	/**
 	 * Refreshes the Segment.io integration settings from the server
 	 */
-	/*
 	private static Runnable refreshSettingsClock = new Runnable() {
 		@Override
 		public void run() {
@@ -496,7 +484,7 @@ public class Analytics {
 			});
 		}
 	};
-	*/
+
 	
 	//
 	// API Calls
@@ -1419,11 +1407,6 @@ public class Analytics {
 	 * @param payload
 	 */
 	public static void enqueue(final BasePayload payload) {
-		
-		// Disable segment.io API enqueuing
-		return;
-
-		/*
 		statistics.updateInsertAttempts(1);
 		
 		final long start = System.currentTimeMillis(); 
@@ -1447,7 +1430,6 @@ public class Analytics {
 				}
 			}
 		});
-		*/
 	}
 	
 	private static void checkInitialized() {
@@ -1491,18 +1473,13 @@ public class Analytics {
 	 */
 	public static void flush(boolean async) {
 		checkInitialized();
-		
+				
 		statistics.updateFlushAttempts(1);
 		
-		// flush all the providers as well
-		integrationManager.flush();
-		
-		/*
 		final long start = System.currentTimeMillis(); 
 		
 		final CountDownLatch latch = new CountDownLatch(1);
 		
-
 		flushLayer.flush(new FlushCallback() {
 
 			@Override
@@ -1527,7 +1504,6 @@ public class Analytics {
 				Logger.e("Interrupted while waiting for a blocking flush.");
 			}
 		}
-		*/
 	}
 
 	/**
@@ -1560,8 +1536,8 @@ public class Analytics {
 		checkInitialized();
 		// stops the looper on the timer, flush, and database thread
 		flushTimer.quit();
-		//refreshSettingsTimer.quit();
-		//flushLayer.quit();
+		refreshSettingsTimer.quit();
+		flushLayer.quit();
 		databaseLayer.quit();
 		settingsLayer.quit();
 
@@ -1569,7 +1545,7 @@ public class Analytics {
 		database.close();
 		
 		options = null;
-		//writeKey = null;
+		writeKey = null;
 		
 		initialized = false;
 	}
@@ -1624,16 +1600,14 @@ public class Analytics {
 	 * Gets the current Segment.io API writeKey
 	 * @return
 	 */
-	/*
 	public static String getWriteKey() {
 		if (writeKey == null) checkInitialized();
 		return writeKey;
 	}
-	
+
 	public static void setWriteKey(String writeKey) {
 		Analytics.writeKey = writeKey;
 	}
-	*/
 
 	public static IntegrationManager getProviderManager() {
 		return integrationManager;
